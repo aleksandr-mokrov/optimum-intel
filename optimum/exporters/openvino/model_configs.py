@@ -4472,6 +4472,15 @@ class Gemma4OpenVINOConfig(Gemma3OpenVINOConfig):
                     self.config = config
 
                 def forward(self, input_ids: torch.Tensor):
+                    # 26B-A4B has hidden_size_per_layer_input=0 (PLE disabled)
+                    if self.language_model.config.hidden_size_per_layer_input <= 0:
+                        return torch.zeros(
+                            input_ids.shape[0],
+                            input_ids.shape[1],
+                            self.language_model.config.num_hidden_layers,
+                            0,
+                            dtype=torch.float32,
+                        )
                     # Replace multimodal token IDs with pad_token_id to match
                     # HF Gemma4Model.forward which uses llm_input_ids where
                     # image/video/audio positions are set to pad_token_id
