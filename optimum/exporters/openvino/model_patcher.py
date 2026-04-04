@@ -5163,9 +5163,9 @@ class Gemma4LMModelPatcher(Gemma3LMModelPatcher):
         for decoder_layer in self._model.model.language_model.layers:
             decoder_layer.self_attn.orig_forward = decoder_layer.self_attn.forward
             decoder_layer.self_attn.forward = types.MethodType(gemma4_text_attention_forward, decoder_layer.self_attn)
-            if hasattr(decoder_layer, "moe"):
-                decoder_layer.moe._orig_forward = decoder_layer.moe.forward
-                decoder_layer.moe.forward = types.MethodType(_gemma4_moe_block_forward, decoder_layer.moe)
+            if hasattr(decoder_layer, "experts"):
+                decoder_layer.experts._orig_forward = decoder_layer.experts.forward
+                decoder_layer.experts.forward = types.MethodType(_gemma4_moe_block_forward, decoder_layer.experts)
 
     def __exit__(self, exc_type, exc_value, traceback):
         super().__exit__(exc_type, exc_value, traceback)
@@ -5175,8 +5175,8 @@ class Gemma4LMModelPatcher(Gemma3LMModelPatcher):
 
         for decoder_layer in self._model.model.language_model.layers:
             decoder_layer.self_attn.forward = decoder_layer.self_attn.orig_forward
-            if hasattr(decoder_layer, "moe") and hasattr(decoder_layer.moe, "_orig_forward"):
-                decoder_layer.moe.forward = decoder_layer.moe._orig_forward
+            if hasattr(decoder_layer, "experts") and hasattr(decoder_layer.experts, "_orig_forward"):
+                decoder_layer.experts.forward = decoder_layer.experts._orig_forward
 
         setattr(self._model, self.orig_forward_name, self.model_orig_forward)
         setattr(self._model.model, "forward", self.model_orig_language_model_forward)
