@@ -5109,32 +5109,30 @@ def _gemma4_moe_block_forward(self, hidden_states, top_k_index, top_k_weights):
     # top_k_index: [B*S, K], top_k_weights: [B*S, K]
     num_tokens = hidden_states.shape[0]
     dtype = hidden_states.dtype
+    weight_dtype = self.gate_up_proj.dtype
 
     # Compute all expert outputs via batched matmul
     # expanded: [E, B*S, hidden_dim]
-    expanded_hidden = hidden_states.unsqueeze(0).expand(self.num_experts, -1, -1)
+    expanded_hidden = hidden_states.unsqueeze(0).expand(self.num_experts, -1, -1).to(weight_dtype)
 
     # gate_up_proj: [E, 2*inter, hidden] -> transpose to [E, hidden, 2*inter]
-    gate_up = torch.bmm(expanded_hidden, self.gate_up_proj.to(dtype).transpose(1, 2))
+    gate_up = torch.bmm(expanded_hidden, self.gate_up_proj.transpose(1, 2))
     gate, up = gate_up.chunk(2, dim=-1)
     intermediate = self.act_fn(gate) * up
 
     # down_proj: [E, hidden, inter] -> transpose to [E, inter, hidden]
-    expert_outputs = torch.bmm(intermediate, self.down_proj.to(dtype).transpose(1, 2))
+    expert_outputs = torch.bmm(intermediate, self.down_proj.transpose(1, 2))
     # expert_outputs: [E, B*S, hidden_dim]
 
-    # Apply per-expert scale: [E] -> [E, 1, 1]
-    expert_outputs = expert_outputs * self.per_expert_scale.to(dtype).unsqueeze(-1).unsqueeze(-1)
-
     # Build full routing weight matrix [B*S, E] from sparse top-k
-    full_weights = torch.zeros(num_tokens, self.num_experts, dtype=dtype, device=hidden_states.device)
-    full_weights.scatter_add_(1, top_k_index, top_k_weights.to(dtype))
+    full_weights = torch.zeros(num_tokens, self.num_experts, dtype=weight_dtype, device=hidden_states.device)
+    full_weights.scatter_add_(1, top_k_index, top_k_weights.to(weight_dtype))
 
     # Weighted sum over experts: [B*S, 1, E] @ [B*S, E, hidden_dim] -> [B*S, hidden_dim]
     expert_outputs = expert_outputs.permute(1, 0, 2)  # [B*S, E, hidden_dim]
     final_hidden_states = torch.bmm(full_weights.unsqueeze(1), expert_outputs).squeeze(1)
 
-    return final_hidden_states
+    return final_hidden_states.to(dtype)
 
 
 class Gemma4LMModelPatcher(Gemma3LMModelPatcher):
