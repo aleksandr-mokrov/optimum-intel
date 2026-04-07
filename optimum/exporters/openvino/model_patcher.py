@@ -5108,12 +5108,10 @@ def _gemma4_moe_block_forward(self, hidden_states, top_k_index, top_k_weights):
     # hidden_states: [B*S, hidden_dim]
     # top_k_index: [B*S, K], top_k_weights: [B*S, K]
     num_tokens = hidden_states.shape[0]
-    dtype = hidden_states.dtype
-    weight_dtype = self.gate_up_proj.dtype
 
     # Compute all expert outputs via batched matmul
     # expanded: [E, B*S, hidden_dim]
-    expanded_hidden = hidden_states.unsqueeze(0).expand(self.num_experts, -1, -1).to(weight_dtype)
+    expanded_hidden = hidden_states.unsqueeze(0).expand(self.num_experts, -1, -1)
 
     # gate_up_proj: [E, 2*inter, hidden] -> transpose to [E, hidden, 2*inter]
     gate_up = torch.bmm(expanded_hidden, self.gate_up_proj.transpose(1, 2))
@@ -5125,14 +5123,14 @@ def _gemma4_moe_block_forward(self, hidden_states, top_k_index, top_k_weights):
     # expert_outputs: [E, B*S, hidden_dim]
 
     # Build full routing weight matrix [B*S, E] from sparse top-k
-    full_weights = torch.zeros(num_tokens, self.num_experts, dtype=weight_dtype, device=hidden_states.device)
-    full_weights.scatter_add_(1, top_k_index, top_k_weights.to(weight_dtype))
+    full_weights = torch.zeros(num_tokens, self.num_experts, dtype=hidden_states.dtype, device=hidden_states.device)
+    full_weights.scatter_add_(1, top_k_index, top_k_weights)
 
     # Weighted sum over experts: [B*S, 1, E] @ [B*S, E, hidden_dim] -> [B*S, hidden_dim]
     expert_outputs = expert_outputs.permute(1, 0, 2)  # [B*S, E, hidden_dim]
     final_hidden_states = torch.bmm(full_weights.unsqueeze(1), expert_outputs).squeeze(1)
 
-    return final_hidden_states.to(dtype)
+    return final_hidden_states
 
 
 class Gemma4LMModelPatcher(Gemma3LMModelPatcher):
